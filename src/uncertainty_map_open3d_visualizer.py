@@ -113,12 +113,12 @@ def save_screenshot_and_camera(vis):
 
     image = vis.capture_screen_float_buffer(False)
     img = (np.asarray(image) * 255).astype(np.uint8)
-    o3d.io.write_image("screenshot.png", o3d.geometry.Image(img))
+    o3d.io.write_image("../test_demo_image.png", o3d.geometry.Image(img))
 
     cam_params = vis.get_view_control().convert_to_pinhole_camera_parameters()
     o3d.io.write_pinhole_camera_parameters("camera_params.json", cam_params)
 
-    print("Saved screenshot.png and camera_params.json")
+    print("Saved test_demo_image.png and camera_params.json")
 
     return False
 
