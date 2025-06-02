@@ -160,8 +160,8 @@ def visualize_voxel_grid(
 def main():
     """Main pipeline: load point cloud, adjust uncertainty, colorize, voxelize, and visualize."""
     # Configuration
-    INPUT_PLY = "map50.ply"
-    CAMERA_JSON = "camera.json"
+    INPUT_PLY = "test_map.ply"
+    CAMERA_JSON = "test_camera.json"
     VOXEL_SIZE = 0.04
 
     # 1. Load and adjust uncertainties for instanceid == 0
