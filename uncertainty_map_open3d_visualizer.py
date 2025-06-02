@@ -2,6 +2,7 @@ import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import config
 
 
 def load_point_cloud(file_path: str) -> o3d.t.geometry.PointCloud:
@@ -60,14 +61,7 @@ def compute_heatmap_colors(
         norm_uncert = (uncert_np - umin) / (umax - umin)
 
     # Define a custom colormap: dark blue → red
-    custom_colors = [
-        (0.00, "#000080"),  # 0% → navy
-        (0.25, "#0000FF"),  # 25% → pure blue
-        (0.50, "#00FFFF"),  # 50% → cyan
-        (0.75, "#FFFF00"),  # 75% → yellow
-        (1.00, "#FF0000"),  # 100% → red
-    ]
-    heatmap_cmap = mcolors.LinearSegmentedColormap.from_list("heatmap_cmap", custom_colors)
+    heatmap_cmap = mcolors.LinearSegmentedColormap.from_list("heatmap_cmap", config.HEATMAP_COLORS)
 
     # Map normalized uncertainty to RGB (discard alpha channel)
     colors_rgba = heatmap_cmap(norm_uncert)
@@ -158,14 +152,9 @@ def visualize_voxel_grid(
 
 
 def main():
-    """Main pipeline: load point cloud, adjust uncertainty, colorize, voxelize, and visualize."""
-    # Configuration
-    INPUT_PLY = "test_map.ply"
-    CAMERA_JSON = "test_camera.json"
-    VOXEL_SIZE = 0.04
 
     # 1. Load and adjust uncertainties for instanceid == 0
-    pcd_t = load_point_cloud(f"maps/{INPUT_PLY}")
+    pcd_t = load_point_cloud(f"maps/{config.INPUT_PLY}")
     adjust_uncertainty_for_instances(pcd_t)
 
     # 2. Compute RGB colors based on updated uncertainty
@@ -173,11 +162,11 @@ def main():
     assign_colors_to_point_cloud(pcd_t, colors)
 
     # 3. Create VoxelGrid from the colored point cloud
-    voxel_grid = create_voxel_grid(pcd_t, voxel_size=VOXEL_SIZE)
+    voxel_grid = create_voxel_grid(pcd_t, voxel_size=config.VOXEL_SIZE)
 
     # 4. Load camera parameters (optional)
     try:
-        camera_params = load_camera_parameters(CAMERA_JSON)
+        camera_params = load_camera_parameters(config.CAMERA_JSON)
     except Exception:
         camera_params = None
     # 5. Visualize the result
