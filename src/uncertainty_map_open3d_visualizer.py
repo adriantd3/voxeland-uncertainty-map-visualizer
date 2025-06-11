@@ -1,8 +1,12 @@
+from typing import Dict
+from datetime import datetime
 import numpy as np
 import open3d as o3d
 import matplotlib.colors as mcolors
 import config
 
+from metrics.max_entropy_from_ply import get_max_property_value
+from utils.map_json_reader import get_instances_entropy
 
 def load_point_cloud(file_path: str) -> o3d.t.geometry.PointCloud:
     """Load a point cloud (Tensor API) from a PLY file.
@@ -41,29 +45,38 @@ def adjust_uncertainty_for_instances(pcd_t: o3d.t.geometry.PointCloud) -> None:
 
 
 def compute_heatmap_colors(
-    pcd_t: o3d.t.geometry.PointCloud
+    pcd_t: o3d.t.geometry.PointCloud,
+    instances_entropy: Dict[int, float] = None
 ) -> np.ndarray:
-    """Compute RGB colors from normalized uncertainty_categories using a custom heatmap.
-    Args:
-        pcd_t: A Tensor-based PointCloud with an updated
-               "uncertainty_categories" attribute.
-    Returns:
-        A NumPy array of shape (N, 3) with RGB values in [0, 1].
-    """
-    uncert_np = pcd_t.point["uncertainty_categories"].numpy().reshape(-1).astype(np.float32)
-    umin, umax = uncert_np.min(), uncert_np.max()
+    # 1) Sacar IDs de instancia
+    if 'instanceid' not in pcd_t.point:
+        raise KeyError("No hay atributo 'instanceid' en el PointCloud")
+    inst_ids = np.asarray(
+        pcd_t.point['instanceid'].cpu().numpy()
+    ).flatten().astype(int)
 
-    if umin == umax:
-        # If all values are equal, use a mid-level gray (0.5) for normalization
-        norm_uncert = np.full_like(uncert_np, 0.5, dtype=np.float32)
+    # 2) Construir array de entropías “crudas”
+    if instances_entropy is not None:
+        entropies = np.array(
+            [instances_entropy.get(i, 0.75) for i in inst_ids],
+            dtype=float
+        )
     else:
-        norm_uncert = (uncert_np - umin) / (umax - umin)
+        entropies = np.zeros_like(inst_ids, dtype=float)
 
-    # Define a custom colormap: dark blue → red
-    heatmap_cmap = mcolors.LinearSegmentedColormap.from_list("heatmap_cmap", config.HEATMAP_COLORS)
+    # 3) Normalizar solo las claves de HEATMAP_COLORS al rango [0,1]
+    max_key = config.HEATMAP_COLORS[-1][0]  # p.ej. 1.5
+    cmap_list = [
+        (key / max_key, color)
+        for key, color in config.HEATMAP_COLORS
+    ]
+    heatmap_cmap = mcolors.LinearSegmentedColormap.from_list(
+        "heatmap_cmap", cmap_list
+    )
 
-    # Map normalized uncertainty to RGB (discard alpha channel)
-    colors_rgba = heatmap_cmap(norm_uncert)
+    # 4) Aplicar Normalize con tus umbrales fijos y clip=True
+    norm = mcolors.Normalize(vmin=0.0, vmax=max_key, clip=True)
+    colors_rgba = heatmap_cmap(norm(entropies))
     colors_rgb = colors_rgba[:, :3]
 
     return colors_rgb.astype(np.float32)
@@ -113,12 +126,13 @@ def save_screenshot_and_camera(vis):
 
     image = vis.capture_screen_float_buffer(False)
     img = (np.asarray(image) * 255).astype(np.uint8)
-    o3d.io.write_image("../test_demo_image.png", o3d.geometry.Image(img))
+    image_name = f"screenshot_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png"
+    o3d.io.write_image(f"saves/{image_name}", o3d.geometry.Image(img))
 
     cam_params = vis.get_view_control().convert_to_pinhole_camera_parameters()
-    o3d.io.write_pinhole_camera_parameters("camera_params.json", cam_params)
+    o3d.io.write_pinhole_camera_parameters("saves/camera_params.json", cam_params)
 
-    print("Saved test_demo_image.png and camera_params.json")
+    print(f"Saved {image_name} and camera_params.json")
 
     return False
 
@@ -153,11 +167,13 @@ def visualize_voxel_grid(
 def main():
 
     # 1. Load and adjust uncertainties for instanceid == 0
-    pcd_t = load_point_cloud(f"maps/{config.INPUT_PLY}")
+    pcd_t = load_point_cloud(f"ply_maps/{config.INPUT_PLY}")
     adjust_uncertainty_for_instances(pcd_t)
 
     # 2. Compute RGB colors based on updated uncertainty
-    colors = compute_heatmap_colors(pcd_t)
+    entropy_dict = get_instances_entropy(json_path=f"json_map/{config.POST_DIS_JSON_MAP}")
+
+    colors = compute_heatmap_colors(pcd_t, entropy_dict)
     assign_colors_to_point_cloud(pcd_t, colors)
 
     # 3. Create VoxelGrid from the colored point cloud
@@ -165,7 +181,7 @@ def main():
 
     # 4. Load camera parameters (optional)
     try:
-        camera_params = load_camera_parameters(f"{config.CAMERA_JSON}")
+        camera_params = load_camera_parameters(f"saves/{config.CAMERA_JSON}")
     except Exception:
         camera_params = None
     # 5. Visualize the result
